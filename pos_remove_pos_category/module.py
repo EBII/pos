@@ -1,51 +1,32 @@
 # -*- coding: utf-8 -*-
-##############################################################################
-#
-#    OpenERP, Open Source Management Solution
-#    Copyright (C) 2015-TODAY Akretion (<http://www.akretion.com>).
-#
-#    This program is free software: you can redistribute it and/or modify
-#    it under the terms of the GNU Affero General Public License as
-#    published by the Free Software Foundation, either version 3 of the
-#    License, or (at your option) any later version.
-#
-#    This program is distributed in the hope that it will be useful,
-#    but WITHOUT ANY WARRANTY; without even the implied warranty of
-#    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-#    GNU Affero General Public License for more details.
-#
-#    You should have received a copy of the GNU Affero General Public License
-#    along with this program.  If not, see <http://www.gnu.org/licenses/>.
-#
-##############################################################################
+#    autor Akretion (<http://www.akretion.com>
+# License AGPL-3 - See http://www.gnu.org/licenses/agpl-3.0.html
 
-from openerp import models
+from odoo import models
 
 
 class Module(models.Model):
 
     _inherit = 'ir.module.module'
 
-    def module_uninstall(self, cr, uid, ids, context=None):
+    def module_uninstall(self):
 
-        context = context or {}
-
-        for module in self.browse(cr, uid, ids, context=context):
+        for module in self.browse():
             if module.name == 'pos_remove_pos_category':
 
                 # As we have loose previous POS categs restore them
                 # in a sane empty state
 
-                cr.execute('UPDATE product_template SET pos_categ_id=NULL')
+                self._cr.execute('UPDATE product_template SET pos_categ_id=NULL')
 
                 # And restore original constraint
-                cr.execute('''
+                self._cr.execute('''
                     ALTER TABLE product_template
                     DROP CONSTRAINT IF EXISTS
                     product_template_pos_categ_id_fkey
                 ''')
 
-                cr.execute('''
+                self._cr.execute('''
                     ALTER TABLE product_template ADD CONSTRAINT
                     "product_template_pos_categ_id_fkey"
                     FOREIGN KEY (pos_categ_id)
@@ -54,7 +35,7 @@ class Module(models.Model):
 
                 # Restore POS category menu action
                 # in SQL because pool/env is not available here
-                cr.execute('''
+                self._cr.execute('''
                     UPDATE ir_act_window iaw SET res_model='pos.category'
                     FROM ir_model_data imd
                     WHERE
@@ -65,6 +46,4 @@ class Module(models.Model):
 
                 break
 
-        return super(Module, self).module_uninstall(
-            cr, uid, ids, context=context
-        )
+        return super(Module, self).module_uninstall()

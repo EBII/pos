@@ -20,7 +20,7 @@
 ##############################################################################
 
 import sys
-from openerp import models, fields, api, tools
+from odoo import models, fields, api, tools
 
 
 class ProductTemplate(models.Model):
@@ -71,28 +71,28 @@ class ProductCategory(models.Model):
 _auto_end_original = models.BaseModel._auto_end
 
 
-def _auto_end(self, cr, context=None):
+def _auto_end(self):
     """ Create the foreign keys recorded by _auto_init.
         (pos_remove_pos_category monkey patching)
     """
-    context = context or {}
-    module = context['module']
+    import pdb; pdb.set_trace()
+    module = self.module
     foreign_keys = []
     patched = 'openerp.addons.pos_remove_pos_category' in sys.modules
 
     for t, k, r, d in self._foreign_keys:
         if patched and (t, k) == ('product_template', 'pos_categ_id'):
             if module == 'pos_remove_pos_category':
-                cr.execute('''
+                self._cr.execute('''
                     ALTER TABLE product_template
                     DROP CONSTRAINT IF EXISTS
                     product_template_pos_categ_id_fkey
                 ''')
-                cr.execute('''
+                self._cr.execute('''
                     UPDATE product_template
                     SET pos_categ_id = categ_id;
                 ''')
-                cr.execute('''
+                self._cr.execute('''
                     ALTER TABLE product_template ADD CONSTRAINT
                     "product_template_pos_categ_id_fkey"
                     FOREIGN KEY (pos_categ_id)
@@ -101,7 +101,7 @@ def _auto_end(self, cr, context=None):
             continue
         foreign_keys.append((t, k, r, d))
     self._foreign_keys = foreign_keys
-    return _auto_end_original(self, cr, context=context)
+    return _auto_end_original(self)
 
 
 models.BaseModel._auto_end = _auto_end
