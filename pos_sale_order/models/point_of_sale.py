@@ -20,7 +20,7 @@ class SaleOrder(models.Model):
                                 copy=False,
                                 default='')
     session_id = fields.Many2one(comodel_name= 'pos.session',
-                                 string='Session', select=1,
+                                 string='Session',
                                  domain="[('state', '=', 'opened')]",
                                  states={'draft': [('readonly', False)]},
                                  readonly=True)
@@ -247,7 +247,7 @@ class PosConfig(models.Model):
     warehouse_id = fields.Many2one(
         'stock.warehouse',
         string='Warehouse',
-        required=True)
+        required=True,default=0)
     stock_location_id = fields.Many2one(
         'stock.location',
         string='Stock Location',
