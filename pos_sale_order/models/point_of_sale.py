@@ -4,8 +4,8 @@
 
 import time
 
-from openerp import fields, models, api, _
-from openerp.exceptions import Warning
+from odoo import api, fields, models, _
+from odoo.exceptions import Warning
 
 
 class SaleOrder(models.Model):
@@ -19,8 +19,8 @@ class SaleOrder(models.Model):
                                 readonly=True,
                                 copy=False,
                                 default='')
-    session_id = fields.Many2one('pos.session', string='Session',
-                                 select=1,
+    session_id = fields.Many2one(comodel_name= 'pos.session',
+                                 string='Session', select=1,
                                  domain="[('state', '=', 'opened')]",
                                  states={'draft': [('readonly', False)]},
                                  readonly=True)
