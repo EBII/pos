@@ -24,7 +24,7 @@ class SaleOrder(models.Model):
                                  domain="[('state', '=', 'opened')]",
                                  states={'draft': [('readonly', False)]},
                                  readonly=True)
-    payment_ids = fields.Many2many(readonly=True)
+    payment_ids = fields.Many2many(comodel_name= 'acount.payment',readonly=True)
 
     @api.multi
     def confirm_sale_from_pos(self):
@@ -247,7 +247,7 @@ class PosConfig(models.Model):
     warehouse_id = fields.Many2one(
         'stock.warehouse',
         string='Warehouse',
-        required=True,default=0)
+        required=True,default=1)
     stock_location_id = fields.Many2one(
         'stock.location',
         string='Stock Location',
