@@ -8,31 +8,6 @@ from odoo import api, fields, models, _
 from odoo.exceptions import Warning
 
 
-class SaleOrder(models.Model):
-    _inherit = 'sale.order'
-
-    _sql_constraints = [('pos_reference_uniq',
-                         'unique (pos_reference, session_id)',
-                         'The pos_reference must be uniq per session')]
-
-    pos_reference = fields.Char(string='Receipt Ref',
-                                readonly=True,
-                                copy=False,
-                                default='')
-    session_id = fields.Many2one(comodel_name= 'pos.session',
-                                 string='Session',
-                                 domain="[('state', '=', 'opened')]",
-                                 states={'draft': [('readonly', False)]},
-                                 readonly=True)
-    payment_ids = fields.Many2many(comodel_name= 'acount.payment',readonly=True)
-
-    @api.multi
-    def confirm_sale_from_pos(self):
-        " Make sale confirmation optional "
-        self.ensure_one()
-        return True
-
-
 class PosOrder(models.Model):
     _inherit = 'pos.order'
 
@@ -76,8 +51,8 @@ class PosOrder(models.Model):
             line['product_uom_qty'] = line.pop('qty')
         args, kwargs = self._prepare_product_onchange_params(order, line)
 
-        vals = sale_line_obj.product_id_change_with_wh(*args, **kwargs)
-        self._merge_product_onchange(order, vals['value'], line)
+        #vals = sale_line_obj.product_id_change_with_wh(*args, **kwargs)
+        #self._merge_product_onchange(order, vals['value'], line)
 
     @api.multi
     def _prepare_sale_order_vals(self, ui_order):
@@ -96,13 +71,13 @@ class PosOrder(models.Model):
             'order_line': ui_order['lines'],
             'pos_reference': ui_order['name'],
             'partner_id': ui_order.get('partner_id') or False,
-            'order_policy': 'manual',
         }
 
     @api.model
     def create_from_ui(self, orders):
         # Keep only new orders
         sale_obj = self.env['sale.order']
+       # import pdb; pdb.set_trace()
         submitted_references = [o['data']['name'] for o in orders]
         existing_orders = sale_obj.search([
             ('pos_reference', 'in', submitted_references),
@@ -120,6 +95,8 @@ class PosOrder(models.Model):
                 self._update_sale_order_line_vals(vals, line[2])
             order = sale_obj.create(vals)
             for payments in ui_order['statement_ids']:
+
+                print "statementIds %s" % payments
                 self.add_payment(
                     order.id,
                     self._payment_fields(payments[2]),
@@ -145,6 +122,7 @@ class PosOrder(models.Model):
 
     @api.multi
     def _prepare_payment_vals(self, order_id, data):
+
         context = dict(self._context or {})
         property_obj = self.env['ir.property']
         order = self.env['sale.order'].browse(order_id)
@@ -156,12 +134,12 @@ class PosOrder(models.Model):
                 self.env['res.partner']._find_accounting_partner(
                     order.partner_id).id or False),
         }
-        account_def = property_obj.get('property_account_receivable',
+        account_def = property_obj.get('property_account_receivable_id',
                                        'res.partner')
         args['account_id'] = ((
             order.partner_id and
-            order.partner_id.property_account_receivable and
-            order.partner_id.property_account_receivable.id) or
+            order.partner_id.property_account_receivable_id and
+            order.partner_id.property_account_receivable_id.id) or
             (account_def and account_def.id) or False)
 
         if not args['account_id']:
@@ -173,14 +151,15 @@ class PosOrder(models.Model):
                         'to make payment for the partner: "%s" (id:%d).') % (
                             order.partner_id.name, order.partner_id.id,)
             raise Warning(_('Configuration Error!'), msg)
-
+        #import pdb;pdb.set_trace()
         context.pop('pos_session_id', False)
 
         journal_id = data.get('journal', False)
+
         statement_id = data.get('statement_id', False)
         assert journal_id or statement_id, 'No statement_id '
         'or journal_id passed to the method!'
-
+        #import pdb; pdb.set_trace()
         for statement in order.session_id.statement_ids:
             if statement.id == statement_id:
                 journal_id = statement.journal_id.id
@@ -197,7 +176,7 @@ class PosOrder(models.Model):
             'statement_id': statement_id,
             'journal_id': journal_id,
             'ref': order.session_id.name,
-            'sale_ids': [(6, 0, [order_id])]
+           # 'sale_ids': [(6, 0, [order_id])]
         })
 
         return args
@@ -207,6 +186,8 @@ class PosOrder(models.Model):
         """Create a new payment for the order"""
         statement_line_obj = self.env['account.bank.statement.line']
         args = self._prepare_payment_vals(order_id, data)
+        print "args : %s " % args
+        import pdb; pdb.set_trace()
         statement_line_obj.create(args)
 
         return args['statement_id']
