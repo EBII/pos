@@ -14,8 +14,9 @@ class SaleOrder(models.Model):
                                 copy=False,
                                 default='')
 
-    payment_ids = fields.Many2many(comodel_name= 'account.payment',readonly=True)
-    session_id = fields.Many2one(comodel_name='pos.order',
+    payment_ids = fields.Many2many(
+        comodel_name='account.payment', readonly=True)
+    session_id = fields.Many2one(comodel_name='pos.session',
                                  string='Session',
                                  domain="[('state', '=', 'opened')]",
                                  states={'draft': [('readonly', False)]},
@@ -26,13 +27,3 @@ class SaleOrder(models.Model):
         " Make sale confirmation optional "
         self.ensure_one()
         return True
-
-
-class SaleOrderLine(models.Model):
-    _inherit = "sale.order.line"
-
-    session_id = fields.Many2one(comodel_name='sale.order',
-                                 string='Session',
-                                 domain="[('state', '=', 'opened')]",
-                                 states={'draft': [('readonly', False)]},
-                                 readonly=True)

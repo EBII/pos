@@ -46,14 +46,13 @@ class PosOrder(models.Model):
 
     @api.multi
     def _update_sale_order_line_vals(self, order, line):
-        sale_line_obj = self.env['sale.order.line'].browse(False)
         if line.get('qty'):
-            line['product_uom_qty'] = line.pop('qty')
-        args, kwargs = self._prepare_product_onchange_params(order, line)
-
-        #vals = sale_line_obj.product_id_change_with_wh(*args, **kwargs)
-        #self._merge_product_onchange(order, vals['value'], line)
-
+            line['product_uom_qty'] = line.pop('qty') # marche pas avec qty = 0
+        if line.get('tax_ids'):
+            line.pop('tax_ids')
+        line.pop('pack_lot_ids')
+        self._prepare_product_onchange_params(order, line)
+       
     @api.multi
     def _prepare_sale_order_vals(self, ui_order):
         pos_session = self.env['pos.session'].browse(
@@ -65,7 +64,7 @@ class PosOrder(models.Model):
         return {
             'pricelist_id': config.pricelist_id.id,
             'warehouse_id': config.warehouse_id.id,
-            'section_id': ui_order.get('section_id') or False,
+            'team_id': ui_order.get('team_id') or False,
             'user_id': ui_order.get('user_id') or False,
             'session_id': ui_order['pos_session_id'],
             'order_line': ui_order['lines'],
@@ -77,7 +76,6 @@ class PosOrder(models.Model):
     def create_from_ui(self, orders):
         # Keep only new orders
         sale_obj = self.env['sale.order']
-       # import pdb; pdb.set_trace()
         submitted_references = [o['data']['name'] for o in orders]
         existing_orders = sale_obj.search([
             ('pos_reference', 'in', submitted_references),
@@ -86,7 +84,6 @@ class PosOrder(models.Model):
         orders_to_save = [o for o in orders if (
             o['data']['name'] not in existing_references)]
         order_ids = existing_orders.ids
-
         for tmp_order in orders_to_save:
             to_invoice = tmp_order['to_invoice']
             ui_order = tmp_order['data']
@@ -94,9 +91,8 @@ class PosOrder(models.Model):
             for line in vals['order_line']:
                 self._update_sale_order_line_vals(vals, line[2])
             order = sale_obj.create(vals)
-            for payments in ui_order['statement_ids']:
 
-                print "statementIds %s" % payments
+            for payments in ui_order['statement_ids']:
                 self.add_payment(
                     order.id,
                     self._payment_fields(payments[2]),
@@ -109,13 +105,10 @@ class PosOrder(models.Model):
                 session.refresh()
 
             if order.confirm_sale_from_pos():
-                order.signal_workflow('order_confirm')
+                order.action_confirm()
+
                 if to_invoice:
-                    invoice_obj = self.env['account.invoice']
-                    invoice = invoice_obj.browse(order.invoice_ids.id)
-                    order.signal_workflow('manual_invoice')
-                    invoice.signal_workflow('invoice_open')
-                    invoice.write({'sale_ids': [(6, 0, [order.id])]})
+                    invoice_lst = order.action_invoice_create()
                 order_ids.append(order.id)
 
         return order_ids
@@ -126,6 +119,7 @@ class PosOrder(models.Model):
         context = dict(self._context or {})
         property_obj = self.env['ir.property']
         order = self.env['sale.order'].browse(order_id)
+        partner_id = order.partner_id.id
         args = {
             'amount': data['amount'],
             'date': data.get('payment_date', time.strftime('%Y-%m-%d')),
@@ -136,12 +130,11 @@ class PosOrder(models.Model):
         }
         account_def = property_obj.get('property_account_receivable_id',
                                        'res.partner')
-        args['account_id'] = ((
-            order.partner_id and
-            order.partner_id.property_account_receivable_id and
-            order.partner_id.property_account_receivable_id.id) or
+        args['account_id'] = (
+            (order.partner_id and
+             order.partner_id.property_account_receivable_id and
+             order.partner_id.property_account_receivable_id.id) or
             (account_def and account_def.id) or False)
-
         if not args['account_id']:
             if not args['partner_id']:
                 msg = _('There is no receivable account defined '
@@ -149,9 +142,8 @@ class PosOrder(models.Model):
             else:
                 msg = _('There is no receivable account defined '
                         'to make payment for the partner: "%s" (id:%d).') % (
-                            order.partner_id.name, order.partner_id.id,)
+                          order.partner_id.name, order.partner_id.id,)
             raise Warning(_('Configuration Error!'), msg)
-        #import pdb;pdb.set_trace()
         context.pop('pos_session_id', False)
 
         journal_id = data.get('journal', False)
@@ -159,7 +151,6 @@ class PosOrder(models.Model):
         statement_id = data.get('statement_id', False)
         assert journal_id or statement_id, 'No statement_id '
         'or journal_id passed to the method!'
-        #import pdb; pdb.set_trace()
         for statement in order.session_id.statement_ids:
             if statement.id == statement_id:
                 journal_id = statement.journal_id.id
@@ -176,7 +167,7 @@ class PosOrder(models.Model):
             'statement_id': statement_id,
             'journal_id': journal_id,
             'ref': order.session_id.name,
-           # 'sale_ids': [(6, 0, [order_id])]
+            #sale_ids : order_id,
         })
 
         return args
@@ -186,10 +177,7 @@ class PosOrder(models.Model):
         """Create a new payment for the order"""
         statement_line_obj = self.env['account.bank.statement.line']
         args = self._prepare_payment_vals(order_id, data)
-        print "args : %s " % args
-        import pdb; pdb.set_trace()
         statement_line_obj.create(args)
-
         return args['statement_id']
 
 
@@ -207,6 +195,7 @@ class PosSession(models.Model):
     @api.multi
     def _confirm_orders(self):
         sale_obj = self.env['sale.order']
+
         for session in self:
             partner_id = session.config_id.anonymous_partner_id.id
             domains = {}
@@ -228,7 +217,7 @@ class PosConfig(models.Model):
     warehouse_id = fields.Many2one(
         'stock.warehouse',
         string='Warehouse',
-        required=True,default=1)
+        required=True, default=1)
     stock_location_id = fields.Many2one(
         'stock.location',
         string='Stock Location',
